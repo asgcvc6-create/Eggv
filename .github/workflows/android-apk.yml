@@ -1,0 +1,108 @@
+
+name: Build Horizon Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'horizon-android-part-*.zip'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Check source files
+        run: |
+          ls -lh
+          test -f horizon-android-part-01.zip
+          test -f horizon-android-part-02.zip
+          test -f horizon-android-part-03.zip
+
+      - name: Prepare source archive
+        run: |
+          mkdir -p source
+          if unzip -t horizon-android-part-01.zip >/dev/null 2>&1; then
+            for f in horizon-android-part-*.zip; do
+              unzip -o "$f" -d source
+            done
+          else
+            cat horizon-android-part-*.zip > horizon-source.zip
+            unzip -o horizon-source.zip -d source
+          fi
+
+      - name: Locate Android project
+        run: |
+          find source -name Cargo.toml -o -name settings.gradle -o -name settings.gradle.kts
+          test -f source/horizon-main/Cargo.toml
+          test -f source/horizon-main/android-app/Cargo.toml
+          test -f source/horizon-main/android/settings.gradle
+          test -f source/horizon-main/android/app/build.gradle
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android components
+        run: |
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+          sdkmanager "ndk;27.2.12479018"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Build Rust Android library
+        working-directory: source/horizon-main
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -o android/app/src/main/jniLibs \
+            build --release
+
+      - name: Build APK
+        working-directory: source/horizon-main/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Verify APK
+        run: |
+          APK="source/horizon-main/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Horizon-Android-APK
+          path: source/horizon-main/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - name: Publish APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: horizon-android-${{ github.run_number }}
+          name: Horizon Android Build ${{ github.run_number }}
+          prerelease: true
+          files: source/horizon-main/android/app/build/outputs/apk/debug/app-debug.apk
+          
