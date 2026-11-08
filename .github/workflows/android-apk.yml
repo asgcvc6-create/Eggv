@@ -61,6 +61,7 @@ jobs:
           set -e
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
+            "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.2.12479018"
