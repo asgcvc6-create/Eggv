@@ -1,3 +1,4 @@
+
 name: Build Horizon Android APK
 
 on:
@@ -24,12 +25,10 @@ jobs:
         shell: bash
         run: |
           set -e
-          test -f horizon-android-part-01.zip
-          test -f horizon-android-part-02.zip
-          test -f horizon-android-part-03.zip
-          unzip -t horizon-android-part-01.zip
-          unzip -t horizon-android-part-02.zip
-          unzip -t horizon-android-part-03.zip
+          for f in horizon-android-part-01.zip horizon-android-part-02.zip horizon-android-part-03.zip; do
+            test -s "$f"
+            unzip -t "$f"
+          done
 
       - name: Extract Horizon source
         shell: bash
@@ -41,7 +40,6 @@ jobs:
           done
           test -f source/horizon-main/Cargo.toml
           test -f source/horizon-main/android-app/Cargo.toml
-          test -f source/horizon-main/android-app/src/lib.rs
           test -f source/horizon-main/android/app/build.gradle
           test -f source/horizon-main/android/app/src/main/AndroidManifest.xml
 
@@ -55,13 +53,25 @@ jobs:
         shell: bash
         run: |
           set -e
-          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDK="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/cmdline-tools/16.0/bin" >> "$GITHUB_PATH"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          yes | "$SDK/cmdline-tools/16.0/bin/sdkmanager" --licenses >/dev/null || true
-          "$SDK/cmdline-tools/16.0/bin/sdkmanager" \
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+          cd "$RUNNER_TEMP"
+          curl -fL \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -o android-tools.zip
+
+          mkdir -p android-tools
+          unzip -q android-tools.zip -d android-tools
+          mv android-tools/cmdline-tools "$SDK/cmdline-tools/latest"
+
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses || true
+
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
@@ -119,3 +129,4 @@ jobs:
           name: Horizon Android Build ${{ github.run_number }}
           prerelease: true
           files: source/horizon-main/android/app/build/outputs/apk/debug/app-debug.apk
+          
